@@ -1,0 +1,21 @@
+[project]
+name = "gemini-usage"
+version = "0.1.0"
+description = "Track Gemini AI prompt quota usage in semi-realtime"
+requires-python = ">=3.11"
+dependencies = [
+    "gemini-webapi>=0.6",
+    "pycookiecheat>=0.8",
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[project.scripts]
+gemini-usage = "gemini_usage.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
