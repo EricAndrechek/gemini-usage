@@ -1,6 +1,6 @@
-# Binaries
-gemini-usage
-gemini-cookies
+# Binaries (only in repo root, not cmd/ subdirectories)
+/gemini-usage
+/gemini-cookies
 
 # Python
 _python/.venv/
