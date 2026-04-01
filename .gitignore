@@ -1,6 +1,14 @@
+# Binary
+gemini-usage
+
+# Python
+_python/.venv/
 .venv/
 __pycache__/
 *.egg-info/
-dist/
-recon*.json
-recon*.py
+
+# Recon output (large JSON dumps from API exploration)
+_docs/recon/*.json
+
+# Claude Code
+.claude/
