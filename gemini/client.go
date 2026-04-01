@@ -306,9 +306,35 @@ func (c *Client) CountTurnsInChat(ctx context.Context, cid string) (TurnCounts, 
 		return counts, err
 	}
 
-	parts, err := extractJSONFromResponse(text)
+	turns, err := extractTurns(text)
 	if err != nil {
 		return counts, err
+	}
+
+	for _, t := range turns {
+		turn, ok := t.([]any)
+		if !ok || len(turn) < 3 {
+			continue
+		}
+		bucket := classifyRawTurn(turn)
+		switch bucket {
+		case "pro":
+			counts.Pro++
+		case "thinking":
+			counts.Thinking++
+		default:
+			counts.Flash++
+		}
+	}
+
+	return counts, nil
+}
+
+// extractTurns parses a READ_CHAT response and returns the raw turn array.
+func extractTurns(text string) ([]any, error) {
+	parts, err := extractJSONFromResponse(text)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, part := range parts {
@@ -328,39 +354,25 @@ func (c *Client) CountTurnsInChat(ctx context.Context, cid string) (TurnCounts, 
 		}
 
 		turns, ok := getNestedValue(body, 0).([]any)
-		if !ok {
-			continue
+		if ok {
+			return turns, nil
 		}
-
-		for _, t := range turns {
-			turn, ok := t.([]any)
-			if !ok || len(turn) < 3 {
-				continue
-			}
-
-			var modelID string
-			if userSection, ok := turn[2].([]any); ok && len(userSection) > 4 {
-				if mid, ok := userSection[4].(string); ok && len(mid) == 16 {
-					modelID = mid
-				}
-			}
-
-			hasThoughts := getNestedString(turn, 3, 0, 0, 37, 0, 0) != ""
-
-			bucket := classifyTurn(modelID, hasThoughts)
-			switch bucket {
-			case "pro":
-				counts.Pro++
-			case "thinking":
-				counts.Thinking++
-			default:
-				counts.Flash++
-			}
-		}
-		break
 	}
 
-	return counts, nil
+	return nil, nil
+}
+
+// classifyRawTurn extracts the model ID and thoughts indicator from a raw
+// turn array and returns the quota bucket ("pro", "thinking", or "flash").
+func classifyRawTurn(turn []any) string {
+	var modelID string
+	if userSection, ok := turn[2].([]any); ok && len(userSection) > 4 {
+		if mid, ok := userSection[4].(string); ok && len(mid) == 16 {
+			modelID = mid
+		}
+	}
+	hasThoughts := getNestedString(turn, 3, 0, 0, 37, 0, 0) != ""
+	return classifyTurn(modelID, hasThoughts)
 }
 
 // CountUsageSince counts all user turns by quota bucket since the given time.

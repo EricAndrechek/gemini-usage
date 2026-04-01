@@ -1,5 +1,9 @@
 # gemini-usage
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/ericandrechek/gemini-usage/gemini.svg)](https://pkg.go.dev/github.com/ericandrechek/gemini-usage/gemini)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ericandrechek/gemini-usage)](https://goreportcard.com/report/github.com/ericandrechek/gemini-usage)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Track your Google Gemini prompt quota usage in semi-realtime.
 
 Google provides no way to see how many Pro or Thinking prompts you've used today — they only warn you when you're "close" to the limit. This tool counts your actual usage by reading your conversation history via Gemini's internal web APIs.
@@ -9,40 +13,36 @@ Works across all devices (desktop + phone) since it reads account-level conversa
 ## Install
 
 ```bash
+# Install the CLI
+go install github.com/ericandrechek/gemini-usage/cmd/gemini-usage@latest
+
+# Use as a library
 go get github.com/ericandrechek/gemini-usage
 ```
 
 ## Quick Start (CLI)
 
 ```bash
-# Install from source
-go install github.com/ericandrechek/gemini-usage/cmd/gemini-usage@latest
-
-# Or build locally
-git clone https://github.com/ericandrechek/gemini-usage.git
-cd gemini-usage
-go build -o gemini-usage ./cmd/gemini-usage/
-
 # One-shot: print current usage and exit
-./gemini-usage
+gemini-usage
 
 # Continuous polling (prints JSON every 60s)
-./gemini-usage -poll
+gemini-usage -poll
 
 # Custom interval
-./gemini-usage -poll -interval 30s
+gemini-usage -poll -interval 30s
 
 # Use a specific browser profile (quote the name if it contains spaces)
-./gemini-usage -profile "Profile 2"
+gemini-usage -profile "Profile 2"
 
 # Use Chrome instead of Brave
-./gemini-usage -browser chrome
+gemini-usage -browser chrome
 
 # Use a cookie file directly (no browser needed)
-./gemini-usage -cookies /path/to/cookies.json
+gemini-usage -cookies /path/to/cookies.json
 
 # Force re-read cookies from browser (triggers macOS Keychain prompt)
-./gemini-usage -refresh
+gemini-usage -refresh
 ```
 
 ### CLI Flags
@@ -66,6 +66,15 @@ Output:
 }
 ```
 
+### Build from Source
+
+```bash
+git clone https://github.com/ericandrechek/gemini-usage.git
+cd gemini-usage
+go build -o gemini-usage ./cmd/gemini-usage/
+go build -o gemini-cookies ./cmd/gemini-cookies/
+```
+
 ## Prerequisites
 
 - **Brave** or **Chrome** on macOS/Linux/Windows with an active login to gemini.google.com
@@ -75,6 +84,8 @@ Output:
 The first run reads cookies from the browser's encrypted cookie database, which triggers a macOS Keychain prompt on Mac. After that, cookies are cached for 12 hours.
 
 ## Library Usage
+
+Full API documentation: [pkg.go.dev/github.com/ericandrechek/gemini-usage/gemini](https://pkg.go.dev/github.com/ericandrechek/gemini-usage/gemini)
 
 ### Cookie Providers
 
@@ -235,24 +246,24 @@ When using this library inside a long-running service (e.g. a macOS `launchd` da
 The solution is a stable helper binary that handles Keychain access:
 
 ```bash
-# Build the helper once and put it somewhere permanent
-go build -o /usr/local/bin/gemini-cookies ./cmd/gemini-cookies/
+# Install the helper binary
+go install github.com/ericandrechek/gemini-usage/cmd/gemini-cookies@latest
 
 # Grant it Keychain access by running it once interactively
 gemini-cookies -browser brave -profile "Profile 2"
-# (approve the Keychain prompt, then Ctrl-C)
+# (approve the Keychain prompt — the binary is now authorized)
 ```
 
-Then in your service code, use `ExecCookies` to shell out to the helper:
+Then in your service code, use [`ExecCookies`](https://pkg.go.dev/github.com/ericandrechek/gemini-usage/gemini#ExecCookies) to shell out to the helper:
 
 ```go
 provider := gemini.CachedProvider(
-    gemini.ExecCookies("/usr/local/bin/gemini-cookies",
+    gemini.ExecCookies("/path/to/gemini-cookies",
         "-browser", "brave", "-profile", "Profile 2"),
 )
 ```
 
-Your service binary can be recompiled freely — only the helper binary's signature matters to Keychain.
+Your service binary can be recompiled freely — only the helper binary's signature matters to Keychain. Find the installed binary path with `which gemini-cookies` or `go env GOPATH`/bin.
 
 ## Without Browser Dependencies
 
