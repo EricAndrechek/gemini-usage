@@ -22,6 +22,13 @@ type Invalidator interface {
 	Invalidate() error
 }
 
+// CacheKeyer is an optional interface that CookieProviders can implement
+// to provide a unique key for cache file naming. CachedProvider uses this
+// to derive a profile-specific default cache filename automatically.
+type CacheKeyer interface {
+	CacheKey() string
+}
+
 // StaticCookies returns a CookieProvider that always returns the same cookies.
 // Use this when you already have cookie values from another source.
 //
@@ -92,7 +99,11 @@ func CachedProvider(inner CookieProvider, opts ...CacheOption) CookieProvider {
 		o(c)
 	}
 	if c.path == "" {
-		c.path = defaultCachePath()
+		if keyer, ok := inner.(CacheKeyer); ok {
+			c.path = filepath.Join(DefaultCacheDir(), "cookies-"+keyer.CacheKey()+".json")
+		} else {
+			c.path = defaultCachePath()
+		}
 	}
 	return c
 }

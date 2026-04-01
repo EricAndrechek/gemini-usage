@@ -221,12 +221,38 @@ gemini.NewClient(ctx, provider,
     gemini.WithHTTPTimeout(30*time.Second),     // HTTP request timeout
     gemini.WithProLimit(100),                    // daily Pro quota
     gemini.WithThinkingLimit(300),               // daily Thinking quota
-    gemini.WithResetTimezone(loc),               // quota reset timezone
+    gemini.WithResetTimezone(loc),               // quota reset timezone (default: system local)
     gemini.WithLogger(slog.Default()),           // structured logger
 )
 ```
 
 These options can also be passed to `NewTracker` via `WithClientOptions(...)`.
+
+## macOS Keychain / launchd Services
+
+When using this library inside a long-running service (e.g. a macOS `launchd` daemon), direct browser cookie extraction is problematic: Keychain prompts can't appear without a GUI session, and recompiling your program changes its code signature, re-triggering permission requests.
+
+The solution is a stable helper binary that handles Keychain access:
+
+```bash
+# Build the helper once and put it somewhere permanent
+go build -o /usr/local/bin/gemini-cookies ./cmd/gemini-cookies/
+
+# Grant it Keychain access by running it once interactively
+gemini-cookies -browser brave -profile "Profile 2"
+# (approve the Keychain prompt, then Ctrl-C)
+```
+
+Then in your service code, use `ExecCookies` to shell out to the helper:
+
+```go
+provider := gemini.CachedProvider(
+    gemini.ExecCookies("/usr/local/bin/gemini-cookies",
+        "-browser", "brave", "-profile", "Profile 2"),
+)
+```
+
+Your service binary can be recompiled freely — only the helper binary's signature matters to Keychain.
 
 ## Without Browser Dependencies
 
@@ -236,7 +262,7 @@ If you don't need browser cookie extraction (e.g. on a headless server), build w
 go build -tags nobrowser ./...
 ```
 
-Then provide cookies via `FileCookies` or `StaticCookies`.
+Then provide cookies via `FileCookies`, `StaticCookies`, or `ExecCookies`.
 
 ## How It Works
 
@@ -267,10 +293,13 @@ See [_docs/GEMINI_API_INTERNALS.md](_docs/GEMINI_API_INTERNALS.md) for the full 
 │   ├── config.go            # Model variant IDs, classification logic
 │   ├── cookies.go           # CookieProvider interface + StaticCookies, FileCookies, CachedProvider
 │   ├── cookies_browser.go   # BraveCookies, ChromeCookies (build tag: !nobrowser)
+│   ├── cookies_exec.go      # ExecCookies (shell out to helper binary)
 │   ├── parse.go             # Google batchexecute response parser
 │   ├── tracker.go           # Continuous polling tracker
 │   └── usage.go             # FetchUsage + types (QuotaInfo, Usage)
 ├── cmd/gemini-usage/        # CLI binary
+│   └── main.go
+├── cmd/gemini-cookies/      # Keychain helper binary (stable for launchd)
 │   └── main.go
 ├── _python/                 # Python prototype (reference)
 ├── _docs/                   # API internals docs + recon scripts

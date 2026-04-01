@@ -44,15 +44,11 @@ type clientConfig struct {
 }
 
 func defaultClientConfig() clientConfig {
-	loc, err := time.LoadLocation("America/Los_Angeles")
-	if err != nil {
-		loc = time.FixedZone("PT", -7*3600)
-	}
 	return clientConfig{
 		httpTimeout:   DefaultHTTPTimeout,
 		proLimit:      DefaultProLimit,
 		thinkingLimit: DefaultThinkingLimit,
-		resetTimezone: loc,
+		resetTimezone: time.Local,
 		logger:        slog.Default(),
 	}
 }
@@ -73,7 +69,7 @@ func WithThinkingLimit(n int) ClientOption {
 }
 
 // WithResetTimezone sets the timezone for daily quota resets.
-// Default: America/Los_Angeles.
+// Default: system local timezone.
 func WithResetTimezone(loc *time.Location) ClientOption {
 	return func(c *clientConfig) { c.resetTimezone = loc }
 }

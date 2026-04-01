@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/browserutils/kooky"
 	_ "github.com/browserutils/kooky/browser/brave"
@@ -46,6 +47,10 @@ func ChromeCookies(profile string) CookieProvider {
 type browserProvider struct {
 	browser string
 	profile string
+}
+
+func (b *browserProvider) CacheKey() string {
+	return b.browser + "-" + strings.ReplaceAll(b.profile, " ", "_")
 }
 
 func (b *browserProvider) Cookies(ctx context.Context) ([]*http.Cookie, error) {

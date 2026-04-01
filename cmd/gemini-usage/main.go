@@ -18,8 +18,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/ericandrechek/gemini-usage/gemini"
@@ -48,19 +46,7 @@ func main() {
 		default:
 			log.Fatalf("unsupported browser: %s (use brave or chrome)", *browser)
 		}
-		// Resolve the actual profile name for cache path keying
-		resolvedProfile := *profile
-		if resolvedProfile == "" {
-			if *browser == "brave" {
-				resolvedProfile = "Profile 1"
-			} else {
-				resolvedProfile = "Default"
-			}
-		}
-		cacheName := fmt.Sprintf("cookies-%s-%s.json", *browser, strings.ReplaceAll(resolvedProfile, " ", "_"))
-		provider = gemini.CachedProvider(inner,
-			gemini.WithCachePath(filepath.Join(gemini.DefaultCacheDir(), cacheName)),
-		)
+		provider = gemini.CachedProvider(inner)
 	}
 
 	if *refresh {
