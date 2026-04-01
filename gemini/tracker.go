@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 )
@@ -54,10 +55,11 @@ func WithClientOptions(opts ...ClientOption) TrackerOption {
 //
 // The Tracker stops when the context is cancelled.
 type Tracker struct {
-	provider CookieProvider
-	cfg      trackerConfig
-	client   *Client
-	updates  chan *Usage
+	provider  CookieProvider
+	cfg       trackerConfig
+	client    *Client
+	updates   chan *Usage
+	lastTotal int // last non-zero total count, for detecting suspicious drops
 }
 
 // NewTracker creates a Tracker that polls usage at a regular interval.
@@ -152,11 +154,29 @@ func (t *Tracker) poll(ctx context.Context) {
 	resetTime := t.client.resetTime()
 	counts, err := t.client.CountUsageSince(ctx, resetTime)
 
-	if err != nil {
-		// Try cookie refresh on auth errors
-		t.cfg.logger.Warn("poll failed, attempting cookie refresh", "err", err)
+	if err != nil && errors.Is(err, ErrAuthExpired) {
+		// Auth expired — refresh cookies and retry
+		t.cfg.logger.Warn("auth expired, refreshing cookies", "err", err)
 		if t.refreshClient(ctx) == nil {
 			counts, err = t.client.CountUsageSince(ctx, resetTime)
+		}
+	} else if err != nil {
+		t.cfg.logger.Warn("poll failed", "err", err)
+	}
+
+	// Detect suspicious zero results: if we previously saw usage but now see
+	// zero, it likely means the session expired silently. Try refreshing.
+	if err == nil {
+		total := counts.Pro + counts.Thinking + counts.Flash
+		if total == 0 && t.lastTotal > 0 {
+			t.cfg.logger.Warn("usage dropped to zero unexpectedly, refreshing cookies",
+				"previous_total", t.lastTotal)
+			if t.refreshClient(ctx) == nil {
+				counts, err = t.client.CountUsageSince(ctx, resetTime)
+			}
+		}
+		if total > 0 || (counts.Pro+counts.Thinking+counts.Flash) > 0 {
+			t.lastTotal = counts.Pro + counts.Thinking + counts.Flash
 		}
 	}
 

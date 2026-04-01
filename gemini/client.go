@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,11 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrAuthExpired indicates that the session cookies are no longer valid.
+// The batchexecute endpoint returned a redirect or HTML login page instead
+// of API data. Refresh cookies and retry.
+var ErrAuthExpired = errors.New("gemini auth expired: cookies are no longer valid")
 
 const (
 	batchExecURL = "https://gemini.google.com/_/BardChatUi/data/batchexecute"
@@ -221,7 +227,17 @@ func (c *Client) batchExecute(ctx context.Context, rpcID, payload string) (strin
 		return "", err
 	}
 
-	return string(body), nil
+	text := string(body)
+
+	// Detect auth failures that return 200 with HTML instead of batchexecute data.
+	// Valid batchexecute responses start with )]}\' or a digit (length-prefixed frame).
+	if len(text) > 0 && text[0] != ')' && (text[0] < '0' || text[0] > '9') && text[0] != '[' {
+		if strings.Contains(text, "accounts.google.com") || strings.Contains(text, "<html") {
+			return "", ErrAuthExpired
+		}
+	}
+
+	return text, nil
 }
 
 // ChatInfo holds metadata about a conversation.
@@ -244,7 +260,12 @@ func (c *Client) ListChats(ctx context.Context, limit int) ([]ChatInfo, error) {
 		return nil, err
 	}
 
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("list chats: empty response (possible auth issue): %w", ErrAuthExpired)
+	}
+
 	var chats []ChatInfo
+	var foundChatList bool
 	for _, part := range parts {
 		var parsed []any
 		if json.Unmarshal(part, &parsed) != nil {
@@ -265,6 +286,7 @@ func (c *Client) ListChats(ctx context.Context, limit int) ([]ChatInfo, error) {
 		if !ok {
 			continue
 		}
+		foundChatList = true
 
 		for _, item := range chatList {
 			chat, ok := item.([]any)
@@ -284,6 +306,10 @@ func (c *Client) ListChats(ctx context.Context, limit int) ([]ChatInfo, error) {
 			chats = append(chats, ChatInfo{CID: cid, Title: title, Timestamp: ts})
 		}
 		break
+	}
+
+	if !foundChatList {
+		return nil, fmt.Errorf("list chats: response did not contain chat data (possible auth issue): %w", ErrAuthExpired)
 	}
 
 	return chats, nil
