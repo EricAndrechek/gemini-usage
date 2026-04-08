@@ -323,7 +323,9 @@ type TurnCounts struct {
 }
 
 // CountTurnsInChat reads a conversation and counts user turns by quota bucket.
-func (c *Client) CountTurnsInChat(ctx context.Context, cid string) (TurnCounts, error) {
+// Only turns with a timestamp at or after `since` are counted; older turns
+// in a resumed conversation are skipped.
+func (c *Client) CountTurnsInChat(ctx context.Context, cid string, since time.Time) (TurnCounts, error) {
 	var counts TurnCounts
 
 	payloadJSON, _ := json.Marshal([]any{cid, 100, nil, 1, []int{0}, []int{4}, nil, 1})
@@ -337,9 +339,13 @@ func (c *Client) CountTurnsInChat(ctx context.Context, cid string) (TurnCounts, 
 		return counts, err
 	}
 
+	sinceTS := since.Unix()
 	for _, t := range turns {
 		turn, ok := t.([]any)
 		if !ok || len(turn) < 3 {
+			continue
+		}
+		if ts := turnTimestamp(turn); ts > 0 && ts < sinceTS {
 			continue
 		}
 		bucket := classifyRawTurn(turn)
@@ -388,6 +394,23 @@ func extractTurns(text string) ([]any, error) {
 	return nil, nil
 }
 
+// turnTimestamp returns the epoch-seconds timestamp from turn[4][0], or 0
+// if the field is absent or malformed.
+func turnTimestamp(turn []any) int64 {
+	if len(turn) < 5 {
+		return 0
+	}
+	tsArr, ok := turn[4].([]any)
+	if !ok || len(tsArr) == 0 {
+		return 0
+	}
+	f, ok := tsArr[0].(float64)
+	if !ok {
+		return 0
+	}
+	return int64(f)
+}
+
 // classifyRawTurn extracts the model ID and thoughts indicator from a raw
 // turn array and returns the quota bucket ("pro", "thinking", or "flash").
 func classifyRawTurn(turn []any) string {
@@ -424,7 +447,7 @@ func (c *Client) CountUsageSince(ctx context.Context, since time.Time) (TurnCoun
 			continue
 		}
 
-		counts, err := c.CountTurnsInChat(ctx, chat.CID)
+		counts, err := c.CountTurnsInChat(ctx, chat.CID, since)
 		if err != nil {
 			c.cfg.logger.Warn("failed to read chat", "cid", chat.CID, "err", err)
 			continue
